@@ -5,7 +5,7 @@
 set -euo pipefail
 
 # ----------------- Logging -----------------
-say(){ printf "\n\033[1m==> %s\033[0m\n" "$*"; }   # fixed: real newline, bold heading
+say(){ printf "\n\033[1m==> %s\033[0m\n" "$*"; }
 green(){ printf "\033[32m%s\033[0m\n" "$*"; }
 yellow(){ printf "\033[33m%s\033[0m\n" "$*"; }
 red(){ printf "\033[31m%s\033[0m\n" "$*"; }
@@ -14,7 +14,67 @@ warn(){ yellow "⚠️  $*"; }
 bad(){ red "❌ $*"; }
 have(){ command -v "$1" >/dev/null 2>&1; }
 
-trap 'bad "Script failed at line $LINENO"; exit 1' ERR
+trap 'bad "Script failed or interrupted (line $LINENO)"; exit 1' ERR INT TERM
+
+# ----------------- Args & usage -----------------
+usage(){
+  cat <<EOF
+Usage: $0 [--yes]
+
+Post-install for Fedora Workstation 42+.
+Performs system updates, enables RPM Fusion, installs codecs (full ffmpeg),
+Mesa *freeworld* VAAPI/VDPAU drivers, VS Code, and TLP, and disables
+conflicting services. Safe to re-run.
+
+Options:
+  -y, --yes, --assume-yes   Skip confirmation prompt
+  -h, --help                Show this help and exit
+EOF
+}
+
+AUTO_YES=0
+for a in "$@"; do
+  case "$a" in
+    -y|--yes|--assume-yes) AUTO_YES=1 ;;
+    -h|--help) usage; exit 0 ;;
+    *) ;;
+  esac
+done
+
+# ----------------- OS guard -----------------
+if [ -r /etc/os-release ]; then
+  # shellcheck disable=SC1091
+  . /etc/os-release
+else
+  bad "/etc/os-release not found; unsupported system"
+  exit 1
+fi
+
+if [ "${ID:-}" != "fedora" ]; then
+  bad "This script supports Fedora only (found ID='${ID:-unknown}')"
+  exit 1
+fi
+
+FEDORA_MAJOR=${VERSION_ID%%.*}
+if ! printf '%s' "$FEDORA_MAJOR" | grep -Eq '^[0-9]+$'; then
+  bad "Unrecognized Fedora VERSION_ID: '${VERSION_ID:-}'"
+  exit 1
+fi
+if [ "$FEDORA_MAJOR" -lt 42 ]; then
+  bad "Fedora 42+ required (found ${VERSION_ID})"
+  exit 1
+fi
+
+# ----------------- Confirm changes -----------------
+if [ "$AUTO_YES" -ne 1 ]; then
+  say "About to configure this Fedora ${VERSION_ID} system with codecs, drivers, VS Code, and TLP."
+  printf "Proceed with system-wide changes using sudo and DNF? [y/N] "
+  read -r REPLY
+  case "$REPLY" in
+    [yY]|[yY][eE][sS]) ;;
+    *) bad "Aborted by user"; exit 1 ;;
+  esac
+fi
 
 # ----------------- Package manager -----------------
 PKG=dnf
@@ -26,7 +86,7 @@ say "System update"
 sudo "$PKG" -y upgrade --refresh || true
 
 say "Enable RPM Fusion (Free + Nonfree)"
-if ! ls /etc/yum.repos.d/rpmfusion-{free,nonfree}-release*.repo >/dev/null 2>&1; then
+if ! rpm -q rpmfusion-free-release >/dev/null 2>&1 || ! rpm -q rpmfusion-nonfree-release >/dev/null 2>&1; then
   sudo "$PKG" -y install \
     "https://download1.rpmfusion.org/free/fedora/rpmfusion-free-release-$(rpm -E %fedora).noarch.rpm" \
     "https://download1.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-$(rpm -E %fedora).noarch.rpm" || true
@@ -38,10 +98,11 @@ say "Full FFmpeg (swap from ffmpeg-free if present)"
 if rpm -q ffmpeg-free >/dev/null 2>&1; then
   sudo "$PKG" -y swap ffmpeg-free ffmpeg --allowerasing
 fi
-sudo "$PKG" -y install ffmpeg ffmpeg-libs libva-utils gstreamer1-plugin-openh264 mozilla-openh264 --exclude='*.i686'
+sudo "$PKG" install -y --exclude='*.i686' \
+  ffmpeg ffmpeg-libs libva-utils gstreamer1-plugin-openh264 mozilla-openh264
 
 say "Mesa drivers (Vulkan + VAAPI/VDPAU *freeworld*)"
-sudo "$PKG" -y install mesa-vulkan-drivers --exclude='*.i686' || true
+sudo "$PKG" install -y --exclude='*.i686' mesa-vulkan-drivers || true
 if ! rpm -q mesa-va-drivers-freeworld >/dev/null 2>&1; then
   sudo "$PKG" -y swap mesa-va-drivers mesa-va-drivers-freeworld --allowerasing || true
 else
@@ -85,7 +146,7 @@ sudo "$PKG" -y install tlp
 sudo systemctl enable tlp --now
 
 say "Disable power-profiles-daemon (let TLP manage power)"
-if systemctl list-unit-files | grep -q '^power-profiles-daemon.service'; then
+if systemctl list-unit-files | grep -q '^power-profiles-daemon\.service'; then
   sudo systemctl disable --now power-profiles-daemon || true
 else
   warn "power-profiles-daemon not present; skipping."

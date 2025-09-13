@@ -13,6 +13,14 @@ Clone or copy the script, then run:
     chmod +x ./fedora-setup.sh
     ./fedora-setup.sh
 
+Flags:
+
+- `--yes` to skip the confirmation prompt (non-interactive).
+
+Requirements:
+
+- Fedora Workstation 42+ (the script enforces this).
+
 After installation, reboot once to ensure GPU drivers and TLP are active.
 
 ---
