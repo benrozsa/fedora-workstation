@@ -5,19 +5,19 @@
 set -Eeuo pipefail
 
 # ----------------- Logging -----------------
-say(){ printf "\n\033[1m==> %s\033[0m\n" "$*"; }
-green(){ printf "\033[32m%s\033[0m\n" "$*"; }
-yellow(){ printf "\033[33m%s\033[0m\n" "$*"; }
-red(){ printf "\033[31m%s\033[0m\n" "$*"; }
-ok(){ green "✅ $*"; }
-warn(){ yellow "⚠️  $*"; }
-bad(){ red "❌ $*"; }
-have(){ command -v "$1" >/dev/null 2>&1; }
+say() { printf "\n\033[1m==> %s\033[0m\n" "$*"; }
+green() { printf "\033[32m%s\033[0m\n" "$*"; }
+yellow() { printf "\033[33m%s\033[0m\n" "$*"; }
+red() { printf "\033[31m%s\033[0m\n" "$*"; }
+ok() { green "✅ $*"; }
+warn() { yellow "⚠️  $*"; }
+bad() { red "❌ $*"; }
+have() { command -v "$1" >/dev/null 2>&1; }
 
 trap 'bad "Script failed or interrupted (line $LINENO)"; exit 1' ERR INT TERM
 
 # ----------------- Version helper -----------------
-script_version(){
+script_version() {
   # 1) Allow override via env var
   if [ -n "${FEDORA_SETUP_VERSION:-}" ]; then
     printf '%s' "$FEDORA_SETUP_VERSION"
@@ -26,14 +26,17 @@ script_version(){
   # 2) Try git tag from repo (if available)
   if have git; then
     if V="$(git -C "$(dirname "$0")" describe --tags --abbrev=0 2>/dev/null)"; then
-      [ -n "$V" ] && { printf '%s' "$V"; return; }
+      [ -n "$V" ] && {
+        printf '%s' "$V"
+        return
+      }
     fi
   fi
   # 3) Fallback
   printf '%s' "dev"
 }
 # Simple retry helper: try once, then retry once on transient failure
-retry_once(){
+retry_once() {
   local cmd=("$@")
   "${cmd[@]}" && return 0
   warn "Command failed, retrying once: ${cmd[*]}"
@@ -42,7 +45,7 @@ retry_once(){
 }
 
 # ----------------- Args & usage -----------------
-usage(){
+usage() {
   cat <<EOF
 Usage: $0 [--yes]
 
@@ -60,9 +63,12 @@ EOF
 AUTO_YES=0
 for a in "$@"; do
   case "$a" in
-    -y|--yes|--assume-yes) AUTO_YES=1 ;;
-    -h|--help) usage; exit 0 ;;
-    *) ;;
+  -y | --yes | --assume-yes) AUTO_YES=1 ;;
+  -h | --help)
+    usage
+    exit 0
+    ;;
+  *) ;;
   esac
 done
 
@@ -97,8 +103,11 @@ if [ "$AUTO_YES" -ne 1 ]; then
   printf "Proceed with system-wide changes using sudo and DNF? [y/N] "
   read -r REPLY
   case "$REPLY" in
-    [yY]|[yY][eE][sS]) ;;
-    *) bad "Aborted by user"; exit 1 ;;
+  [yY] | [yY][eE][sS]) ;;
+  *)
+    bad "Aborted by user"
+    exit 1
+    ;;
   esac
 fi
 
@@ -117,8 +126,8 @@ fi
 say "Enable RPM Fusion (Free + Nonfree)"
 if ! rpm -q rpmfusion-free-release >/dev/null 2>&1 || ! rpm -q rpmfusion-nonfree-release >/dev/null 2>&1; then
   if ! retry_once sudo "$PKG" -y install \
-      "https://download1.rpmfusion.org/free/fedora/rpmfusion-free-release-$(rpm -E %fedora).noarch.rpm" \
-      "https://download1.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-$(rpm -E %fedora).noarch.rpm"; then
+    "https://download1.rpmfusion.org/free/fedora/rpmfusion-free-release-$(rpm -E %fedora).noarch.rpm" \
+    "https://download1.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-$(rpm -E %fedora).noarch.rpm"; then
     bad "Failed to enable RPM Fusion repositories. Aborting."
     exit 1
   fi
@@ -127,8 +136,8 @@ else
 fi
 
 # Verify RPM Fusion repos are actually enabled
-if ! sudo "$PKG" repolist --enabled 2>/dev/null | grep -q "rpmfusion-free" || \
-   ! sudo "$PKG" repolist --enabled 2>/dev/null | grep -q "rpmfusion-nonfree"; then
+if ! sudo "$PKG" repolist --enabled 2>/dev/null | grep -q "rpmfusion-free" ||
+  ! sudo "$PKG" repolist --enabled 2>/dev/null | grep -q "rpmfusion-nonfree"; then
   bad "RPM Fusion repos not detected as enabled after setup. Aborting."
   exit 1
 fi
@@ -184,7 +193,10 @@ if [ ! -f "$REPO_DIR/vscode.repo" ]; then
   if ! retry_once sudo rpm --import https://packages.microsoft.com/keys/microsoft.asc; then
     warn "Failed to import Microsoft GPG key; relying on repo-provided gpgkey."
   fi
-  TMP_REPO=$(mktemp) || { bad "mktemp failed creating temp repo file"; exit 1; }
+  TMP_REPO=$(mktemp) || {
+    bad "mktemp failed creating temp repo file"
+    exit 1
+  }
   cat >"$TMP_REPO" <<'EOF'
 [code]
 name=Visual Studio Code
@@ -257,8 +269,8 @@ if have ffmpeg; then
   CFG="$(ffmpeg -version 2>/dev/null | sed -n '1,12p')"
   printf "%s\n" "$CFG" | grep -q -- '--enable-libx264' && ok "FFmpeg has x264 enabled" || warn "x264 not shown"
   printf "%s\n" "$CFG" | grep -q -- '--enable-libx265' && ok "FFmpeg has x265 enabled" || warn "x265 not shown"
-  printf "%s\n" "$CFG" | grep -q -- '--enable-libvpx'  && ok "FFmpeg has VP8/VP9 (libvpx)" || warn "libvpx not shown"
-  printf "%s\n" "$CFG" | grep -q -- '--enable-libaom'  && ok "FFmpeg has AV1 (libaom)" || warn "libaom not shown"
+  printf "%s\n" "$CFG" | grep -q -- '--enable-libvpx' && ok "FFmpeg has VP8/VP9 (libvpx)" || warn "libvpx not shown"
+  printf "%s\n" "$CFG" | grep -q -- '--enable-libaom' && ok "FFmpeg has AV1 (libaom)" || warn "libaom not shown"
 else
   bad "ffmpeg not installed"
 fi
@@ -274,10 +286,10 @@ if systemctl is-enabled tlp >/dev/null 2>&1 && systemctl is-active tlp >/dev/nul
 else
   warn "TLP not fully active"
 fi
-systemctl is-active power-profiles-daemon >/dev/null 2>&1 \
-  && warn "power-profiles-daemon active" || ok "power-profiles-daemon not active"
-systemctl is-active tuned >/dev/null 2>&1 \
-  && warn "tuned active" || ok "tuned not active"
+systemctl is-active power-profiles-daemon >/dev/null 2>&1 &&
+  warn "power-profiles-daemon active" || ok "power-profiles-daemon not active"
+systemctl is-active tuned >/dev/null 2>&1 &&
+  warn "tuned active" || ok "tuned not active"
 
 :
 
