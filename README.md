@@ -13,6 +13,10 @@ Clone or copy the script, then run:
     chmod +x ./fedora-setup.sh
     ./fedora-setup.sh
 
+Non-interactive:
+
+    ./fedora-setup.sh --yes
+
 Flags:
 
 - `--yes` to skip the confirmation prompt (non-interactive).
@@ -57,6 +61,8 @@ After installation, reboot once to ensure GPU drivers and TLP are active.
 - Script is idempotent (safe to run multiple times).  
 - Designed for **minimal + battery-friendly Fedora workstation**.  
 - Extras like GNOME Tweaks, EasyEffects, or Flatpak apps are intentionally omitted — add them if you want a fuller setup.
+
+See Releases for change history: https://github.com/benrozsa/fedora-workstation/releases
 
 ### Implementation details (robustness)
 
