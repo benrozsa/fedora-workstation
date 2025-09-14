@@ -1,14 +1,19 @@
 name: Yamllint
 
 on:
-  push:
-    paths:
-      - '**/*.yml'
-      - '**/*.yaml'
   pull_request:
     paths:
       - '**/*.yml'
       - '**/*.yaml'
+  push:
+    branches: [ main ]
+    paths:
+      - '**/*.yml'
+      - '**/*.yaml'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   yamllint:

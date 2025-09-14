@@ -1,13 +1,17 @@
 name: Actionlint
 
 on:
-  push:
-    paths:
-      - '.github/workflows/**'
-      - '.github/workflows/actionlint.yml'
   pull_request:
     paths:
       - '.github/workflows/**'
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/**'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   actionlint:
