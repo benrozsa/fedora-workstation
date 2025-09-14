@@ -39,8 +39,7 @@ After installation, reboot once to ensure GPU drivers and TLP are active.
   Adds OpenH264 (GStreamer + Mozilla).
 
 - **Editors & Tools**  
-  Installs `vim-enhanced`, `vlc`, and Visual Studio Code (via Microsoft repo).  
-  Chromium install is commented out but VA-API flags are prepared.
+  Installs `vim-enhanced`, `vlc`, and Visual Studio Code (via Microsoft repo).
 
 - **Battery Optimization**  
   Installs and enables **TLP**.  
@@ -65,6 +64,7 @@ After installation, reboot once to ensure GPU drivers and TLP are active.
 - Retries transient package operations once (network flakiness).  
 - Verifies RPM Fusion repos after bootstrapping; aborts if missing.  
 - Writes the VS Code repo file atomically and chooses the repo directory dynamically: prefers `/etc/dnf/repos.d` when present, falls back to `/etc/yum.repos.d`.
+- Browser choice is left entirely to the user; the script does not configure Chromium.
 
 ---
 
