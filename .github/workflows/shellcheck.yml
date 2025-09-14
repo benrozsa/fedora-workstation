@@ -1,13 +1,18 @@
+---
 name: ShellCheck
 
-on:
-  push:
-    paths:
-      - 'fedora-setup.sh'
-      - '.github/workflows/shellcheck.yml'
+'on':
   pull_request:
     paths:
       - 'fedora-setup.sh'
+  push:
+    branches: [main]
+    paths:
+      - 'fedora-setup.sh'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   shellcheck:
