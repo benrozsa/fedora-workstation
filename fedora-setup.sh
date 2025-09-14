@@ -152,7 +152,19 @@ say "Editors & tools"
 sudo "$PKG" -y install vim-enhanced vlc
 
 say "Visual Studio Code (Microsoft repo)"
-if [ ! -f /etc/yum.repos.d/vscode.repo ]; then
+# Pick repo directory dynamically (prefer existing file, then dnf, then yum)
+REPO_DIR="/etc/yum.repos.d"
+if [ -f /etc/dnf/repos.d/vscode.repo ]; then
+  REPO_DIR="/etc/dnf/repos.d"
+elif [ -f /etc/yum.repos.d/vscode.repo ]; then
+  REPO_DIR="/etc/yum.repos.d"
+elif [ -d /etc/dnf/repos.d ]; then
+  REPO_DIR="/etc/dnf/repos.d"
+else
+  REPO_DIR="/etc/yum.repos.d"
+fi
+
+if [ ! -f "$REPO_DIR/vscode.repo" ]; then
   if ! retry_once sudo rpm --import https://packages.microsoft.com/keys/microsoft.asc; then
     warn "Failed to import Microsoft GPG key; relying on repo-provided gpgkey."
   fi
@@ -165,9 +177,9 @@ enabled=1
 gpgcheck=1
 gpgkey=https://packages.microsoft.com/keys/microsoft.asc
 EOF
-  if ! sudo install -m 0644 "$TMP_REPO" /etc/yum.repos.d/vscode.repo; then
+  if ! sudo install -m 0644 "$TMP_REPO" "$REPO_DIR/vscode.repo"; then
     rm -f "$TMP_REPO"
-    bad "Failed to write /etc/yum.repos.d/vscode.repo"
+    bad "Failed to write $REPO_DIR/vscode.repo"
     exit 1
   fi
   rm -f "$TMP_REPO"

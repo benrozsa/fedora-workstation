@@ -59,6 +59,13 @@ After installation, reboot once to ensure GPU drivers and TLP are active.
 - Designed for **minimal + battery-friendly Fedora workstation**.  
 - Extras like GNOME Tweaks, EasyEffects, or Flatpak apps are intentionally omitted — add them if you want a fuller setup.
 
+### Implementation details (robustness)
+
+- Uses `set -Eeuo pipefail` and an `ERR` trap for clear failures.  
+- Retries transient package operations once (network flakiness).  
+- Verifies RPM Fusion repos after bootstrapping; aborts if missing.  
+- Writes the VS Code repo file atomically and chooses the repo directory dynamically: prefers `/etc/dnf/repos.d` when present, falls back to `/etc/yum.repos.d`.
+
 ---
 
 ## License
