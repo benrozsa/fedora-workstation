@@ -22,7 +22,7 @@ Non-interactive:
 No clone (download and run):
 
     # Prefer a tagged release (replace vX.Y.Z)
-    curl -fsSLO https://raw.githubusercontent.com/benrozsa/fedora-workstation/vX.Y.Z/fedora-setup.sh
+    curl -fsSLO https://raw.githubusercontent.com/benrozsa/fedora-workstation/v0.1.3/fedora-setup.sh
     # Or track main HEAD
     # curl -fsSLO https://raw.githubusercontent.com/benrozsa/fedora-workstation/HEAD/fedora-setup.sh
     chmod +x ./fedora-setup.sh
