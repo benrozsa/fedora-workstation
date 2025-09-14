@@ -25,4 +25,3 @@ jobs:
         with:
           severity: error
           check_together: true
-          path: fedora-setup.sh
