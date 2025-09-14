@@ -2,7 +2,7 @@
 # Fedora Workstation (GNOME) post-install — minimal + battery-friendly
 # Fedora 42+. Safe to rerun.
 
-set -euo pipefail
+set -Eeuo pipefail
 
 # ----------------- Logging -----------------
 say(){ printf "\n\033[1m==> %s\033[0m\n" "$*"; }
@@ -15,6 +15,16 @@ bad(){ red "❌ $*"; }
 have(){ command -v "$1" >/dev/null 2>&1; }
 
 trap 'bad "Script failed or interrupted (line $LINENO)"; exit 1' ERR INT TERM
+
+# Simple retry helper: try once, then retry once on transient failure
+retry_once(){
+  local attempt=1
+  local cmd=("$@")
+  "${cmd[@]}" && return 0
+  warn "Command failed, retrying once: ${cmd[*]}"
+  sleep 2
+  "${cmd[@]}"
+}
 
 # ----------------- Args & usage -----------------
 usage(){
@@ -83,33 +93,57 @@ sudo -v
 
 # ----------------- Base setup -----------------
 say "System update"
-sudo "$PKG" -y upgrade --refresh || true
+if ! retry_once sudo "$PKG" -y upgrade --refresh; then
+  bad "System upgrade failed twice. Check network/DNF and retry."
+  exit 1
+fi
 
 say "Enable RPM Fusion (Free + Nonfree)"
 if ! rpm -q rpmfusion-free-release >/dev/null 2>&1 || ! rpm -q rpmfusion-nonfree-release >/dev/null 2>&1; then
-  sudo "$PKG" -y install \
-    "https://download1.rpmfusion.org/free/fedora/rpmfusion-free-release-$(rpm -E %fedora).noarch.rpm" \
-    "https://download1.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-$(rpm -E %fedora).noarch.rpm" || true
+  if ! retry_once sudo "$PKG" -y install \
+      "https://download1.rpmfusion.org/free/fedora/rpmfusion-free-release-$(rpm -E %fedora).noarch.rpm" \
+      "https://download1.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-$(rpm -E %fedora).noarch.rpm"; then
+    bad "Failed to enable RPM Fusion repositories. Aborting."
+    exit 1
+  fi
 else
   ok "RPM Fusion already enabled"
 fi
 
+# Verify RPM Fusion repos are actually enabled
+if ! sudo "$PKG" repolist --enabled 2>/dev/null | grep -q "rpmfusion-free" || \
+   ! sudo "$PKG" repolist --enabled 2>/dev/null | grep -q "rpmfusion-nonfree"; then
+  bad "RPM Fusion repos not detected as enabled after setup. Aborting."
+  exit 1
+fi
+
 say "Full FFmpeg (swap from ffmpeg-free if present)"
 if rpm -q ffmpeg-free >/dev/null 2>&1; then
-  sudo "$PKG" -y swap ffmpeg-free ffmpeg --allowerasing
+  if ! retry_once sudo "$PKG" -y swap ffmpeg-free ffmpeg --allowerasing; then
+    warn "ffmpeg-free -> ffmpeg swap failed; continuing to attempt install."
+  fi
 fi
-sudo "$PKG" install -y --exclude='*.i686' \
-  ffmpeg ffmpeg-libs libva-utils gstreamer1-plugin-openh264 mozilla-openh264
+if ! retry_once sudo "$PKG" install -y --exclude='*.i686' \
+  ffmpeg ffmpeg-libs libva-utils gstreamer1-plugin-openh264 mozilla-openh264; then
+  bad "Failed to install FFmpeg/codecs. Aborting."
+  exit 1
+fi
 
 say "Mesa drivers (Vulkan + VAAPI/VDPAU *freeworld*)"
-sudo "$PKG" install -y --exclude='*.i686' mesa-vulkan-drivers || true
+if ! retry_once sudo "$PKG" install -y --exclude='*.i686' mesa-vulkan-drivers; then
+  warn "Failed to install mesa-vulkan-drivers; Vulkan may be unavailable."
+fi
 if ! rpm -q mesa-va-drivers-freeworld >/dev/null 2>&1; then
-  sudo "$PKG" -y swap mesa-va-drivers mesa-va-drivers-freeworld --allowerasing || true
+  if ! retry_once sudo "$PKG" -y swap mesa-va-drivers mesa-va-drivers-freeworld --allowerasing; then
+    warn "Failed to swap to mesa-va-drivers-freeworld; VAAPI may be limited."
+  fi
 else
   ok "mesa-va-drivers-freeworld already installed"
 fi
 if ! rpm -q mesa-vdpau-drivers-freeworld >/dev/null 2>&1; then
-  sudo "$PKG" -y swap mesa-vdpau-drivers mesa-vdpau-drivers-freeworld --allowerasing || true
+  if ! retry_once sudo "$PKG" -y swap mesa-vdpau-drivers mesa-vdpau-drivers-freeworld --allowerasing; then
+    warn "Failed to swap to mesa-vdpau-drivers-freeworld; VDPAU may be limited."
+  fi
 else
   ok "mesa-vdpau-drivers-freeworld already installed"
 fi
@@ -118,9 +152,24 @@ say "Editors & tools"
 sudo "$PKG" -y install vim-enhanced vlc
 
 say "Visual Studio Code (Microsoft repo)"
-if [ ! -f /etc/yum.repos.d/vscode.repo ]; then
-  sudo rpm --import https://packages.microsoft.com/keys/microsoft.asc || true
-  sudo tee /etc/yum.repos.d/vscode.repo >/dev/null <<'EOF'
+# Pick repo directory dynamically (prefer existing file, then dnf, then yum)
+REPO_DIR="/etc/yum.repos.d"
+if [ -f /etc/dnf/repos.d/vscode.repo ]; then
+  REPO_DIR="/etc/dnf/repos.d"
+elif [ -f /etc/yum.repos.d/vscode.repo ]; then
+  REPO_DIR="/etc/yum.repos.d"
+elif [ -d /etc/dnf/repos.d ]; then
+  REPO_DIR="/etc/dnf/repos.d"
+else
+  REPO_DIR="/etc/yum.repos.d"
+fi
+
+if [ ! -f "$REPO_DIR/vscode.repo" ]; then
+  if ! retry_once sudo rpm --import https://packages.microsoft.com/keys/microsoft.asc; then
+    warn "Failed to import Microsoft GPG key; relying on repo-provided gpgkey."
+  fi
+  TMP_REPO=$(mktemp) || { bad "mktemp failed creating temp repo file"; exit 1; }
+  cat >"$TMP_REPO" <<'EOF'
 [code]
 name=Visual Studio Code
 baseurl=https://packages.microsoft.com/yumrepos/vscode
@@ -128,8 +177,16 @@ enabled=1
 gpgcheck=1
 gpgkey=https://packages.microsoft.com/keys/microsoft.asc
 EOF
+  if ! sudo install -m 0644 "$TMP_REPO" "$REPO_DIR/vscode.repo"; then
+    rm -f "$TMP_REPO"
+    bad "Failed to write $REPO_DIR/vscode.repo"
+    exit 1
+  fi
+  rm -f "$TMP_REPO"
 fi
-sudo "$PKG" -y install code
+if ! retry_once sudo "$PKG" -y install code; then
+  warn "Failed to install Visual Studio Code; continuing."
+fi
 
 say "Chromium (optional) — install is commented out"
 # sudo "$PKG" -y install chromium
@@ -147,13 +204,21 @@ sudo systemctl enable tlp --now
 
 say "Disable power-profiles-daemon (let TLP manage power)"
 if systemctl list-unit-files | grep -q '^power-profiles-daemon\.service'; then
-  sudo systemctl disable --now power-profiles-daemon || true
+  if ! sudo systemctl disable --now power-profiles-daemon; then
+    warn "Failed to disable power-profiles-daemon"
+  fi
 else
   warn "power-profiles-daemon not present; skipping."
 fi
 
 say "Disable tuned (optional, avoids policy conflicts)"
-sudo systemctl disable --now tuned || true
+if systemctl list-unit-files | grep -q '^tuned\.service'; then
+  if ! sudo systemctl disable --now tuned; then
+    warn "Failed to disable tuned"
+  fi
+else
+  warn "tuned not present; skipping."
+fi
 
 # ----------------- Verification -----------------
 say "Running post-install verification..."
