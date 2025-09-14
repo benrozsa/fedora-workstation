@@ -16,6 +16,22 @@ have(){ command -v "$1" >/dev/null 2>&1; }
 
 trap 'bad "Script failed or interrupted (line $LINENO)"; exit 1' ERR INT TERM
 
+# ----------------- Version helper -----------------
+script_version(){
+  # 1) Allow override via env var
+  if [ -n "${FEDORA_SETUP_VERSION:-}" ]; then
+    printf '%s' "$FEDORA_SETUP_VERSION"
+    return
+  fi
+  # 2) Try git tag from repo (if available)
+  if have git; then
+    if V="$(git -C "$(dirname "$0")" describe --tags --abbrev=0 2>/dev/null)"; then
+      [ -n "$V" ] && { printf '%s' "$V"; return; }
+    fi
+  fi
+  # 3) Fallback
+  printf '%s' "dev"
+}
 # Simple retry helper: try once, then retry once on transient failure
 retry_once(){
   local attempt=1
@@ -76,6 +92,7 @@ if [ "$FEDORA_MAJOR" -lt 42 ]; then
 fi
 
 # ----------------- Confirm changes -----------------
+say "fedora-setup.sh version: $(script_version)"
 if [ "$AUTO_YES" -ne 1 ]; then
   say "About to configure this Fedora ${VERSION_ID} system with codecs, drivers, VS Code, and TLP."
   printf "Proceed with system-wide changes using sudo and DNF? [y/N] "
