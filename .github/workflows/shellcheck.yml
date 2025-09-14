@@ -18,6 +18,6 @@ jobs:
       - name: Run ShellCheck
         uses: ludeeus/action-shellcheck@2.0.0
         with:
-          severity: warning
+          severity: error
           check_together: true
           path: fedora-setup.sh

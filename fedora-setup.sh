@@ -34,7 +34,6 @@ script_version(){
 }
 # Simple retry helper: try once, then retry once on transient failure
 retry_once(){
-  local attempt=1
   local cmd=("$@")
   "${cmd[@]}" && return 0
   warn "Command failed, retrying once: ${cmd[*]}"
