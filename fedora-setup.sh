@@ -14,6 +14,17 @@ warn(){ yellow "⚠️  $*"; }
 bad(){ red "❌ $*"; }
 have(){ command -v "$1" >/dev/null 2>&1; }
 
+# Chromium detection helpers
+has_chromium_rpm(){
+  rpm -q chromium >/dev/null 2>&1 \
+    || command -v chromium >/dev/null 2>&1 \
+    || command -v chromium-browser >/dev/null 2>&1
+}
+has_chromium_flatpak(){
+  command -v flatpak >/dev/null 2>&1 \
+    && flatpak info org.chromium.Chromium >/dev/null 2>&1
+}
+
 trap 'bad "Script failed or interrupted (line $LINENO)"; exit 1' ERR INT TERM
 
 # Simple retry helper: try once, then retry once on transient failure
@@ -190,12 +201,14 @@ fi
 
 say "Chromium (optional) — install is commented out"
 # sudo "$PKG" -y install chromium
-if have chromium; then
+if has_chromium_rpm; then
   mkdir -p "$HOME/.config"
   FLAGS="$HOME/.config/chromium-flags.conf"
   grep -qxF "--use-gl=egl" "$FLAGS" 2>/dev/null || echo "--use-gl=egl" >> "$FLAGS"
   grep -qxF "--ignore-gpu-blocklist" "$FLAGS" 2>/dev/null || echo "--ignore-gpu-blocklist" >> "$FLAGS"
   grep -qxF "--enable-features=VaapiVideoDecoder,VaapiVideoEncodeLinuxGL" "$FLAGS" 2>/dev/null || echo "--enable-features=VaapiVideoDecoder,VaapiVideoEncodeLinuxGL" >> "$FLAGS"
+elif has_chromium_flatpak; then
+  yellow "ℹ️  Chromium Flatpak detected; skipping rpm flags file."
 fi
 
 say "Battery optimization (TLP)"
@@ -272,11 +285,13 @@ systemctl is-active tuned >/dev/null 2>&1 \
   && warn "tuned active" || ok "tuned not active"
 
 say "6) Chromium flags (if Chromium installed)"
-if have chromium; then
+if has_chromium_rpm; then
   FLAGS="$HOME/.config/chromium-flags.conf"
   for flag in "--use-gl=egl" "--ignore-gpu-blocklist" "--enable-features=VaapiVideoDecoder,VaapiVideoEncodeLinuxGL"; do
     grep -qxF "$flag" "$FLAGS" 2>/dev/null && ok "Chromium flag set: $flag" || warn "Missing Chromium flag: $flag"
   done
+elif has_chromium_flatpak; then
+  yellow "ℹ️  Chromium installed via Flatpak — flags file not applicable."
 else
   yellow "ℹ️  Chromium not installed — skipping."
 fi
